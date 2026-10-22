@@ -1,0 +1,27 @@
+# NodeGuard Node for a NAS (Synology, QNAP, Unraid, TrueNAS...) or any computer with Docker.
+# Shares space with the NodeGuard network and earns storage or money.
+#
+# 1. Change the left side of "/volume1/nodeguard:/data" to a folder on your NAS (that's where
+#    the shared space is kept), and choose a password below.
+# 2. Start it (Synology: Container Manager > Project > Create, paste this file).
+# 3. On any computer at home, open http://<your NAS's address>:9596 and sign in.
+# It updates itself each time it starts.
+services:
+  nodeguard-node:
+    image: python:3.12-alpine
+    container_name: nodeguard-node
+    restart: unless-stopped
+    ports:
+      - "9596:9596"
+    volumes:
+      - ./nodeguard-config:/config
+      - /volume1/nodeguard:/data
+    environment:
+      - NODEGUARD_NODE_PASSWORD=choose-a-password
+      - NODEGUARD_NODE_NAME=my-nas
+      - VAULT_NODE_HOME=/config
+      - NODEGUARD_DATA=/data
+    command: >
+      sh -c "mkdir -p /config/app /tmp/x; T=/config/app/node_update.py; [ -f $$T ] || T=/tmp/x/nodeguard-node/node_update.py;
+      wget -qO /tmp/n.tgz https://net.nodeguard.co.uk/node/nodeguard-node.tar.gz && tar xzf /tmp/n.tgz -C /tmp/x
+      && python3 $$T install /tmp/n.tgz /config/app /config; exec python3 /config/app/node_app.py --headless"

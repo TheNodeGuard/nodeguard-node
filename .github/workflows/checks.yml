@@ -1,0 +1,25 @@
+name: Checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        crypto: [with, without]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install cryptography
+        if: matrix.crypto == 'with'
+        run: python -m pip install "cryptography>=42"
+      - name: Every file compiles
+        run: python -m py_compile node_app.py node.py tls.py proofs.py tickets.py httpsafe.py appwindow.py node_update.py
+      - name: Node checks
+        run: python tests/test_node.py
