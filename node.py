@@ -38,6 +38,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import threading
 import time
@@ -100,6 +101,90 @@ class Limiter:
         return wait
 
 
+# ---------- resting: when the owner doesn't want this machine busy ----------
+# A resting machine stays online (so its pieces stay readable, nothing has to be moved and its
+# reliability doesn't drop), but gets no new pieces and sends what's asked of it slowly.
+REST_MBPS = float(os.environ.get("VAULT_REST_MBPS", "1"))
+
+
+def on_battery():
+    """True when this computer is running on its battery. False on mains power, with no battery,
+    or when it can't be told (so a desktop never rests by mistake)."""
+    try:
+        if sys.platform == "win32":
+            import ctypes
+
+            class Power(ctypes.Structure):
+                _fields_ = [("ac", ctypes.c_ubyte), ("flag", ctypes.c_ubyte), ("percent", ctypes.c_ubyte),
+                            ("saver", ctypes.c_ubyte), ("life", ctypes.c_ulong), ("full", ctypes.c_ulong)]
+            st = Power()
+            if not ctypes.windll.kernel32.GetSystemPowerStatus(ctypes.byref(st)):
+                return False
+            return st.ac == 0 and st.flag not in (128, 255)        # 0: unplugged; 128: no battery
+        if sys.platform == "darwin":
+            out = subprocess.run(["pmset", "-g", "batt"], capture_output=True, text=True, timeout=5).stdout
+            return "'Battery Power'" in out
+        base = "/sys/class/power_supply"
+        mains, battery = [], False
+        for n in os.listdir(base):
+            try:
+                kind = open(os.path.join(base, n, "type")).read().strip()
+            except OSError:
+                continue
+            if kind == "Battery":
+                battery = True
+            elif kind == "Mains":
+                try:
+                    mains.append(open(os.path.join(base, n, "online")).read().strip() == "1")
+                except OSError:
+                    pass
+        return battery and bool(mains) and not any(mains)
+    except Exception:       # noqa: BLE001  (never let a power check stop sharing)
+        return False
+
+
+def parse_hours(spec):
+    """"22-7" -> (22, 7): share fully from 22:00 to 07:00. "" or None -> None (all day)."""
+    if not spec:
+        return None
+    m = re.fullmatch(r"\s*(\d{1,2})\s*-\s*(\d{1,2})\s*", str(spec))
+    if not m or not (0 <= int(m.group(1)) <= 23 and 0 <= int(m.group(2)) <= 23):
+        raise ValueError("sharing hours look like 22-7 (from 10pm to 7am)")
+    start, end = int(m.group(1)), int(m.group(2))
+    return None if start == end else (start, end)
+
+
+def in_hours(spec, now=None):
+    h = parse_hours(spec)
+    if not h:
+        return True
+    hour = time.localtime(now).tm_hour
+    start, end = h
+    return start <= hour < end if start < end else (hour >= start or hour < end)
+
+
+def rest_reason(policy, now=None, battery=on_battery):
+    """Why this machine should rest right now, or None. policy: {"hours": "22-7", "battery": True}."""
+    if policy.get("battery") and battery():
+        return "on battery"
+    try:
+        if policy.get("hours") and not in_hours(policy["hours"], now):
+            return "outside sharing hours"
+    except ValueError:
+        pass
+    return None
+
+
+def rest_loop(node, policy, stop, every=30.0):
+    """policy: a dict, or a function returning one (read again each time, so changes apply)."""
+    while not stop.is_set():
+        try:
+            node.set_rest(rest_reason(policy() if callable(policy) else policy))
+        except Exception:       # noqa: BLE001
+            pass
+        stop.wait(every)
+
+
 class Node:
     def __init__(self, folder, secret: bytes = None, capacity: int = 0, cloud_key: str = None):
         self.folder = folder
@@ -124,6 +209,8 @@ class Node:
         self.checker = tickets.Checker(cloud_key) if cloud_key else None
         self.served = 0          # bytes sent to others (reported in heartbeats)
         self.limiter = Limiter()
+        self.speed = 0           # the owner's own upload limit, bytes per second (0 = none)
+        self.rest = None         # why it's resting right now ("on battery", "outside sharing hours"), or None
         self.capacity = capacity or shutil.disk_usage(folder).free
         self._lock = threading.Lock()
         self._used, self._count = self._scan()
@@ -184,7 +271,23 @@ class Node:
     def health(self):
         with self._lock:
             return {"id": self.id, "used": self._used, "shards": self._count,
-                    "free": max(0, self.capacity - self._used)}
+                    "free": max(0, self.capacity - self._used), "resting": bool(self.rest)}
+
+    # ---------- speed and resting ----------
+    def set_speed(self, rate):
+        """The owner's upload limit in bytes per second (0 = no limit). Takes effect at once."""
+        self.speed = max(0, rate or 0)
+        self._apply()
+
+    def set_rest(self, reason):
+        if reason != self.rest:
+            self.rest = reason
+            self._apply()
+            print(f"resting: {reason}" if reason else "sharing fully again", flush=True)
+
+    def _apply(self):
+        rest = REST_MBPS * 125_000
+        self.limiter.rate = (min(self.speed, rest) if self.speed else rest) if self.rest else self.speed
 
     # ---------- logging in to the cloud ----------
     def register(self, cloud: str, operator: str, name: str, zone: str, tier: str = "hot"):
@@ -448,9 +551,10 @@ def relay_loop(node: Node, cloud: str, port: int, stop: threading.Event):
 
 def serve(folder, port, secret: bytes = None, cloud=None, url=None, name=None, capacity=0, host="0.0.0.0",
           relay=False, relay_workers=4, zone="default", delay_ms=0, tls_cert=None, tls_key=None,
-          operator=None, cloud_key=None, tier="hot", country="", max_send_mbps=0):
+          operator=None, cloud_key=None, tier="hot", country="", max_send_mbps=0, rest=None):
+    """rest: when to rest, {"hours": "22-7", "battery": True}, or a function returning that."""
     node = Node(folder, secret, capacity, cloud_key)
-    node.limiter.rate = max_send_mbps * 125_000       # megabits per second -> bytes per second
+    node.set_speed(max_send_mbps * 125_000)            # megabits per second -> bytes per second
     if not secret and not node.cred:
         if not (cloud and operator):
             raise ValueError("a new node needs the network secret, or a join code plus an operator token")
@@ -467,6 +571,8 @@ def serve(folder, port, secret: bytes = None, cloud=None, url=None, name=None, c
         url = f"{cloud.rstrip('/')}/relay/{node.id}"   # others reach us through the cloud
         for _ in range(relay_workers):
             threading.Thread(target=relay_loop, args=(node, cloud, port, stop), daemon=True).start()
+    if rest:
+        threading.Thread(target=rest_loop, args=(node, rest, stop), daemon=True).start()
     if cloud:
         threading.Thread(target=audit_loop, args=(node, cloud, stop), daemon=True).start()
         default_url = f"{'https' if srv.https else 'http'}://127.0.0.1:{port}"
@@ -506,8 +612,16 @@ def main():
     ap.add_argument("--tls-key", default=os.environ.get("VAULT_TLS_KEY"))
     ap.add_argument("--max-send-mbps", type=float, default=float(os.environ.get("VAULT_MAX_SEND_MBPS", "0")),
                     help="limit how fast this machine sends data to others, in megabits per second (0 = no limit)")
+    ap.add_argument("--share-hours", default=os.environ.get("VAULT_SHARE_HOURS", ""),
+                    help="share fully only between these hours, e.g. 22-7 (10pm to 7am); outside them it rests")
+    ap.add_argument("--rest-on-battery", action="store_true", default=os.environ.get("VAULT_REST_ON_BATTERY") == "1",
+                    help="rest while this computer runs on its battery")
     ap.add_argument("--delay-ms", type=int, default=0, help=argparse.SUPPRESS)   # testing only
     a = ap.parse_args()
+    try:
+        parse_hours(a.share_hours)
+    except ValueError as e:
+        sys.exit(str(e))
     cloud_key = None
     if a.join:
         j = parse_join(a.join)
@@ -529,7 +643,9 @@ def main():
                          int(a.capacity_gb * 1e9), host=a.host or ("127.0.0.1" if a.relay else "0.0.0.0"), relay=a.relay,
                          zone=a.zone, delay_ms=a.delay_ms, tls_cert=a.tls_cert, tls_key=a.tls_key,
                          operator=a.operator, cloud_key=cloud_key, tier=a.tier, country=a.country,
-                         max_send_mbps=a.max_send_mbps)
+                         max_send_mbps=a.max_send_mbps,
+                         rest={"hours": a.share_hours, "battery": a.rest_on_battery}
+                         if a.share_hours or a.rest_on_battery else None)
     print(f"node {node.id} serving {a.dir} on port {a.port} (zone {a.zone}, "
           f"{'relay' if a.relay else 'HTTPS' if srv.https else 'HTTP, no TLS'})", flush=True)
     srv.serve_forever()

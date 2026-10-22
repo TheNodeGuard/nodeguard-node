@@ -63,6 +63,14 @@ CITY_COUNTRY = {"london": "GB", "manchester": "GB", "birmingham": "GB", "leeds":
                 "milan": "IT", "stockholm": "SE", "new-york": "US", "chicago": "US", "los-angeles": "US",
                 "toronto": "CA", "singapore": "SG", "sydney": "AU"}
 SPEEDS = [0, 2, 5, 10, 20, 50, 100]     # upload limits offered, in megabits per second (0 = no limit)
+# when to share fully ("" = all day); outside these hours the computer rests (stays online, no new data, sends slowly)
+HOURS = ["", "22-7", "18-8", "9-17"]
+
+
+def rest_policy():
+    """Read each time the node checks, so a change in Settings applies within half a minute."""
+    cfg = load_config()
+    return {"hours": cfg.get("hours") or "", "battery": cfg.get("battery", True) is not False}
 
 
 # the NodeGuard network, used when this copy doesn't carry a join code: nobody has to paste one
@@ -320,7 +328,8 @@ class Runner:
                     folder, free_port(), None, j["cloud"], name=cfg.get("name") or machine_name(),
                     capacity=int(float(cfg["gb"]) * 1e9), host="127.0.0.1", relay=True, zone=cfg["zone"],
                     operator=cfg["operator"], cloud_key=j["cloud_key"], tier=cfg.get("tier") or "hot",
-                    country=CITY_COUNTRY.get(cfg.get("zone"), ""), max_send_mbps=float(cfg.get("mbps") or 0))
+                    country=CITY_COUNTRY.get(cfg.get("zone"), ""), max_send_mbps=float(cfg.get("mbps") or 0),
+                    rest=rest_policy)
             except Exception as e:
                 self.error = f"couldn't connect to the network: {e}"
                 self.srv = None
@@ -598,7 +607,9 @@ def status():
     net = built_in_network()
     out = {"configured": bool(cfg.get("join") and cfg.get("operator")), "running": RUN.running, "error": RUN.error,
            "paused": bool(cfg.get("paused")),
-           "config": {k: cfg.get(k) for k in ("folder", "gb", "zone", "name", "autostart", "tier", "mbps", "linked", "email", "payout", "share")},
+           "config": dict({k: cfg.get(k) for k in ("folder", "gb", "zone", "name", "autostart", "tier", "mbps", "linked", "email", "payout", "share")},
+                          hours=cfg.get("hours") or "", battery=cfg.get("battery", True) is not False),
+           "resting": RUN.node.rest if RUN.node else None, "hours_choices": HOURS,
            "app_url": app_url(),
            "update": UPDATER["u"].status() if UPDATER["u"] else None, "auto_update": cfg.get("auto_update", True) is not False,
            "account": {"available": bool(api_base()), "email": cfg.get("email") if cfg.get("session") else None},
@@ -867,6 +878,9 @@ details.invite input{margin-top:8px}
   <div id="shareRow" class="hide muted small" style="margin-top:6px">Take <select id="share2" style="width:auto;display:inline-block;padding:4px 8px"><option value="0.25">a quarter</option><option value="0.5">half</option><option value="0.75">three quarters</option></select> as storage, the rest as money.</div>
   <label class="f" for="gb2">Space: <b id="gbv2"></b> GB</label><input type="range" id="gb2" min="5" max="2000" step="5">
   <label class="f" for="mbps2">Upload speed limit</label><select id="mbps2"></select>
+  <label class="f" for="hours2">When to share</label><select id="hours2"></select>
+  <label class="check"><input type="checkbox" id="batt2"><span>Rest while this computer is on battery</span></label>
+  <p class="muted small" style="margin:2px 0 8px">Resting keeps this computer online, so it still counts as reliable, but it gets no new data and sends slowly (1 Mbit/s).</p>
   <label class="check"><input type="checkbox" id="auto2"><span>Start when this computer starts</span></label>
   <label class="check"><input type="checkbox" id="board"><span>Show me on the public leaderboard at nodeguard.co.uk/live <span class="muted">(only a nickname, your city and the space you share)</span></span></label>
   <div id="boardRow" class="hide row" style="margin:4px 0 6px 30px"><input type="text" id="nick" maxlength="24" placeholder="Nickname, e.g. DiskDave" style="flex:1;min-width:180px"><button type="button" id="nickSave">Save nickname</button></div>
@@ -885,6 +899,8 @@ const UI = {};
 const sym = () => ({ USD: "$", GBP: "£", EUR: "€" }[(S && S.network && S.network.currency) || "GBP"] || "");
 const money = v => { v = +v || 0; return sym() + v.toFixed(v > 0 && v < 1 ? 3 : 2); };
 const speedName = m => +m ? m + " Mbit/s" : "No limit";
+const hourRange = h => { const [a, b] = String(h).split("-").map(Number), t = x => x === 0 ? "midnight" : x === 12 ? "midday" : x < 12 ? x + "am" : (x - 12) + "pm"; return `${t(a)} to ${t(b)}`; };
+const hourName = h => !h ? "All the time" : ({ "22-7": "Only at night", "18-8": "Evenings and nights", "9-17": "Working hours" }[h] || "Custom") + ` (${hourRange(h)})`;
 const post = (p, b) => fetch(p, { method: "POST", headers: { "Content-Type": "application/json", "X-App-Token": T }, body: JSON.stringify(b || {}) })
   .then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error); return j; });
 const fig = (k, v, cls = "") => `<div class="fig ${cls}"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div></div>`;
@@ -931,8 +947,10 @@ async function load() {
   $("#setup").classList.add("hide"); $("#run").classList.remove("hide");
   const L = S.local || {}, N = S.network || {}, me = N.this_node, on = S.running;
   $("#st").classList.toggle("on", on);
-  $("#stText").textContent = on ? "Sharing" : S.paused ? "Paused" : "Not sharing";
-  $("#stSub").textContent = on ? ((L.uptime_s || 0) < 120 ? "Just started storing data for the network" : `Storing data for the network for ${ago(L.uptime_s)}`) +
+  $("#stText").textContent = on ? (S.resting ? "Resting" : "Sharing") : S.paused ? "Paused" : "Not sharing";
+  $("#stSub").textContent = on && S.resting ? (S.resting === "on battery" ? "On battery, so it's resting: still online, but taking no new data and sending slowly. It shares fully again when you plug in."
+      : `Outside your sharing hours (${hourRange(S.config.hours)}), so it's resting: still online, but taking no new data and sending slowly.`) :
+    on ? ((L.uptime_s || 0) < 120 ? "Just started storing data for the network" : `Storing data for the network for ${ago(L.uptime_s)}`) +
       (N.nodes > 1 ? `, one of ${N.nodes} machines you run` : "") :
     S.paused ? "Nothing is being stored or sent until you resume." : "Trying to connect...";
   $("#toggle").textContent = on ? "Pause" : "Resume"; $("#toggle").className = on ? "" : "primary";
@@ -960,6 +978,9 @@ async function load() {
     (vetted || credit ? "" : " New machines have part of their pay held back for their first 6 months, released as they prove reliable.");
   if (!document.activeElement || !document.activeElement.closest("#run .card:last-child")) {
     $("#mbps2").innerHTML = speeds; $("#mbps2").value = String(S.config.mbps || 0);
+    const hrs = [...new Set((S.hours_choices || [""]).concat([S.config.hours || ""]))];
+    $("#hours2").innerHTML = hrs.map(h => `<option value="${esc(h)}">${esc(hourName(h))}</option>`).join(""); $("#hours2").value = S.config.hours || "";
+    $("#batt2").checked = S.config.battery !== false;
     $("#gb2").max = Math.max(+S.config.gb, Math.floor((S.disk_free_gb + (L.used || 0) / 1e9) * 0.9 / 5) * 5);
     $("#gb2").value = S.config.gb; $("#gbv2").textContent = S.config.gb; $("#auto2").checked = !!S.config.autostart;
   }
@@ -1163,7 +1184,7 @@ $("#updBtn").onclick = async () => { $("#updBtn").disabled = true; try { await p
 $("#autoUpd").onchange = e => post("/api/update/auto", { on: e.target.checked }).catch(() => {});
 $("#share2").onchange = async e => { try { await post("/api/payout", { payout: "both", share: +e.target.value }); } catch (err) { $("#runErr").textContent = err.message; } load(); };
 $("#folderBtn").onclick = async () => { try { const r = await post("/api/folder-backup"); if (r.url) window.open(r.url, "_blank", "noopener"); } catch (e) { $("#runErr").textContent = e.message; } };
-$("#save").onclick = async () => { try { await post("/api/settings", { gb: +$("#gb2").value, mbps: +$("#mbps2").value, autostart: $("#auto2").checked }); $("#save").textContent = "Saved"; setTimeout(() => $("#save").textContent = "Save", 1500); } catch (e) { $("#runErr").textContent = e.message; } load(); };
+$("#save").onclick = async () => { try { await post("/api/settings", { gb: +$("#gb2").value, mbps: +$("#mbps2").value, hours: $("#hours2").value, battery: $("#batt2").checked, autostart: $("#auto2").checked }); $("#save").textContent = "Saved"; setTimeout(() => $("#save").textContent = "Save", 1500); } catch (e) { $("#runErr").textContent = e.message; } load(); };
 $("#reset").onclick = async () => { if (confirm("Stop sharing and change the network or folder? What's stored is kept until you delete the folder.")) { await post("/api/reset"); location.reload(); } };
 $("#quit").onclick = async () => { if (!confirm("Quit NodeGuard Node? This computer stops sharing until you open it again" + (S.config.autostart ? " or restart the computer." : "."))) return;
   await post("/api/quit").catch(() => {}); document.querySelector("main").innerHTML = `<header><h1>NodeGuard Node has quit</h1></header><p class="lead">You can close this window.</p>`; };
@@ -1462,7 +1483,13 @@ def settings(b):
             raise ValueError("choose a speed limit from the list")
         cfg["mbps"] = m
         if RUN.node:
-            RUN.node.limiter.rate = m * 125_000        # takes effect at once
+            RUN.node.set_speed(m * 125_000)             # takes effect at once
+    if "hours" in b:
+        h = str(b["hours"] or "").strip()
+        nodemod.parse_hours(h)                          # raises with a plain message if it's not like 22-7
+        cfg["hours"] = h
+    if "battery" in b:
+        cfg["battery"] = bool(b["battery"])
     restart = False
     if "gb" in b:
         gb = float(b["gb"] or 0)
@@ -1474,6 +1501,8 @@ def settings(b):
     if "autostart" in b and not HEADLESS["on"]:
         cfg["autostart"] = set_autostart(bool(b["autostart"]))
     save_config(cfg)
+    if RUN.node and ("hours" in b or "battery" in b):
+        RUN.node.set_rest(nodemod.rest_reason(rest_policy()))     # at once, not at the next check
     if restart and RUN.running:
         RUN.halt()
         RUN.start(cfg)
