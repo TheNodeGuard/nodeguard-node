@@ -240,8 +240,11 @@ def _use_join(join):
 
 def _cloud(method, url, body=None, headers=None, timeout=15):
     data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(url, data=data, method=method,
-                                 headers=dict({"Content-Type": "application/json"}, **(headers or {})))
+    hdrs = dict({"Content-Type": "application/json"}, **(headers or {}))
+    coords = getattr(RUN.node, "coords", None) if RUN.node else None
+    if coords and url.startswith(coords.primary + "/"):      # the network's coordinators: any one that's up
+        return json.loads(coords.request(method, url[len(coords.primary):], data, headers=hdrs, timeout=timeout) or b"null")
+    req = urllib.request.Request(url, data=data, method=method, headers=hdrs)
     with tls.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read())
 

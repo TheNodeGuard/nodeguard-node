@@ -474,24 +474,48 @@ def device_label():
     return {"Darwin": "Mac", "Windows": "Windows", "Linux": "Linux"}.get(platform.system(), platform.system() or "Unknown")
 
 
-def heartbeat_loop(node: Node, cloud: str, url: str, name: str, stop: threading.Event, zone="default", country=""):
+class _OneCoordinator:
+    """Used only if coordinators.py is missing (an older install): the one address, no failover."""
+
+    def __init__(self, url):
+        self.primary = url.rstrip("/")
+
+    def request(self, method, path, body=None, headers=None, timeout=15):
+        data = body if isinstance(body, (bytes, type(None))) else json.dumps(body).encode()
+        with tls.urlopen(urllib.request.Request(self.primary + path, data=data, method=method, headers=headers or {}),
+                         timeout=timeout) as r:
+            return r.read()
+
+
+def _coords(cloud, cloud_key=None, cache=None):
+    """A coordinator address, or the list of them (coordinators.Coordinators), either works."""
+    if not isinstance(cloud, str):
+        return cloud
+    try:
+        import coordinators
+    except ImportError:
+        return _OneCoordinator(cloud)
+    return coordinators.Coordinators(cloud, cloud_key=cloud_key, cache=cache, opener=tls.urlopen)
+
+
+def heartbeat_loop(node: Node, cloud, url: str, name: str, stop: threading.Event, zone="default", country=""):
+    coords = _coords(cloud)
     while not stop.is_set():
         body = json.dumps(dict(node.health(), url=url, name=name, zone=zone, served=node.served,
                                version=NODE_VERSION, country=country, device=device_label(),
                                lab_ip=os.environ.get("VAULT_LAB_IP") or None)).encode()
-        req = urllib.request.Request(cloud.rstrip("/") + "/nodes/heartbeat", data=body, method="POST",
-                                     headers=dict(node.cloud_headers(60), **{"Content-Type": "application/json"}))
         try:
-            tls.urlopen(req, timeout=5).read()
+            coords.request("POST", "/nodes/heartbeat", body, timeout=5,
+                           headers=dict(node.cloud_headers(60), **{"Content-Type": "application/json"}))
         except Exception:
-            pass  # cloud unreachable: keep serving, retry next beat
+            pass  # no coordinator reachable: keep serving, retry next beat
         stop.wait(HEARTBEAT)
 
 
-def audit_loop(node: Node, cloud: str, stop: threading.Event):
+def audit_loop(node: Node, cloud, stop: threading.Event):
     """Every so often, ask the cloud which of our shards are no longer ours to
     keep (deleted files, or shards moved while we were offline) and remove them."""
-    base = cloud.rstrip("/")
+    coords = _coords(cloud)
     while not stop.wait(AUDIT_EVERY):
         try:
             now = time.time()
@@ -503,32 +527,30 @@ def audit_loop(node: Node, cloud: str, stop: threading.Event):
             removed = 0
             for i in range(0, len(old), 1000):
                 body = json.dumps({"shards": old[i:i + 1000]}).encode()
-                req = urllib.request.Request(f"{base}/nodes/{node.id}/audit", data=body, method="POST",
-                                             headers=dict(node.cloud_headers(), **{"Content-Type": "application/json"}))
-                with tls.urlopen(req, timeout=30) as r:
-                    for sid in json.loads(r.read())["orphans"]:
-                        try:
-                            node.delete(sid)
-                            removed += 1
-                        except OSError:
-                            pass
+                answer = coords.request("POST", f"/nodes/{node.id}/audit", body, timeout=30,
+                                        headers=dict(node.cloud_headers(), **{"Content-Type": "application/json"}))
+                for sid in json.loads(answer)["orphans"]:
+                    try:
+                        node.delete(sid)
+                        removed += 1
+                    except OSError:
+                        pass
             if removed:
                 print(f"cleanup: removed {removed} stale shards", flush=True)
         except Exception:
             pass   # cloud unreachable: try again next round
 
 
-def relay_loop(node: Node, cloud: str, port: int, stop: threading.Event):
+def relay_loop(node: Node, cloud, port: int, stop: threading.Event):
     """For nodes behind a firewall: keep asking the cloud for requests meant for
-    this node, run them against our own local server, and send the answers back."""
+    this node, run them against our own local server, and send the answers back.
+    Any coordinator will do: the queue of requests is shared between them."""
     import base64
-    base = cloud.rstrip("/")
+    coords = _coords(cloud)
     while not stop.is_set():
         try:
             auth = node.cloud_headers()
-            req = urllib.request.Request(f"{base}/relay-poll/{node.id}", headers=auth)
-            with tls.urlopen(req, timeout=40) as r:
-                job = json.loads(r.read())["job"]
+            job = json.loads(coords.request("GET", f"/relay-poll/{node.id}", headers=auth, timeout=40))["job"]
             if not job:
                 continue
             body = base64.b64decode(job["body"])
@@ -543,8 +565,8 @@ def relay_loop(node: Node, cloud: str, port: int, stop: threading.Event):
             keep = {k: v for k, v in hdrs.items() if k.lower() in ("content-type", "x-shard-hash")}
             reply = json.dumps({"id": job["id"], "response": {"status": status, "headers": keep,
                                                                "body": base64.b64encode(data).decode()}}).encode()
-            tls.urlopen(urllib.request.Request(f"{base}/relay-reply/{node.id}", data=reply, method="POST",
-                        headers=dict(auth, **{"Content-Type": "application/json"})), timeout=30).read()
+            coords.request("POST", f"/relay-reply/{node.id}", reply, timeout=30,
+                           headers=dict(auth, **{"Content-Type": "application/json"}))
         except Exception:
             stop.wait(1.0)   # cloud unreachable: back off briefly and retry
 
@@ -565,19 +587,24 @@ def serve(folder, port, secret: bytes = None, cloud=None, url=None, name=None, c
     # everything they send to the cloud goes over HTTPS when the cloud uses it
     srv.https = False if relay else tls.wrap_server(srv, tls_cert, tls_key, tls13_only=True)
     stop = threading.Event()
+    coords = None
+    if cloud:
+        key = (node.cred or {}).get("cloud_key") or cloud_key or (tickets.cloud_public_key(secret) if secret else None)
+        coords = _coords(cloud, cloud_key=key, cache=os.path.join(folder, "coordinators.json"))
+        node.coords = coords
     if relay:
         if not cloud:
             raise ValueError("relay mode needs --cloud")
-        url = f"{cloud.rstrip('/')}/relay/{node.id}"   # others reach us through the cloud
+        url = f"{cloud.rstrip('/')}/relay/{node.id}"   # others reach us through a coordinator (any of them)
         for _ in range(relay_workers):
-            threading.Thread(target=relay_loop, args=(node, cloud, port, stop), daemon=True).start()
+            threading.Thread(target=relay_loop, args=(node, coords, port, stop), daemon=True).start()
     if rest:
         threading.Thread(target=rest_loop, args=(node, rest, stop), daemon=True).start()
     if cloud:
-        threading.Thread(target=audit_loop, args=(node, cloud, stop), daemon=True).start()
+        threading.Thread(target=audit_loop, args=(node, coords, stop), daemon=True).start()
         default_url = f"{'https' if srv.https else 'http'}://127.0.0.1:{port}"
         threading.Thread(target=heartbeat_loop,
-                         args=(node, cloud, url or default_url, name or node.id, stop, zone,
+                         args=(node, coords, url or default_url, name or node.id, stop, zone,
                                (country or "").upper()[:2]),
                          daemon=True).start()
     return node, srv, stop

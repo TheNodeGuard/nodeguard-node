@@ -9,6 +9,17 @@ import json
 import os
 import sys
 import time
+import traceback
+
+
+def _where(e):
+    """file:line where the error happened (the last frame in NodeGuard's own code), for the one-line log."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    spot = ""
+    for fr in traceback.extract_tb(e.__traceback__):
+        if os.path.abspath(fr.filename).startswith(here):
+            spot = f"{os.path.basename(fr.filename)}:{fr.lineno} {fr.name}"
+    return spot
 
 BAD_INPUT = (KeyError, ValueError, TypeError, AttributeError, IndexError, UnicodeError, OverflowError)
 GONE = (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, TimeoutError)
@@ -41,14 +52,13 @@ def _wrap(fn):
         except BAD_INPUT as e:
             _reply(self, 400, "bad request")
             print(f"{time.strftime('%H:%M:%S')} bad request {self.command} {self.path[:80]!r}: "
-                  f"{type(e).__name__}", file=sys.stderr, flush=True)
+                  f"{type(e).__name__}: {str(e)[:160]} at {_where(e)}", file=sys.stderr, flush=True)
             if os.environ.get("VAULT_TRACE"):
-                import traceback
                 traceback.print_exc()
         except Exception as e:                    # a bug: say so plainly, log one line, keep serving
             _reply(self, 500, "internal error")
             print(f"{time.strftime('%H:%M:%S')} error {self.command} {self.path[:80]!r}: "
-                  f"{type(e).__name__}: {str(e)[:200]}", file=sys.stderr, flush=True)
+                  f"{type(e).__name__}: {str(e)[:200]} at {_where(e)}", file=sys.stderr, flush=True)
     return run
 
 
