@@ -663,11 +663,11 @@ def _with_font(page):
 PAGE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <title>NodeGuard</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 84 84'%3E%3Crect x='3' y='3' width='78' height='78' rx='18' fill='%23FFFFFF' stroke='%23DCE1DC'/%3E%3Ccircle cx='42' cy='42' r='16.5' fill='none' stroke='%2317594F' stroke-width='4'/%3E%3Cpath fill='%2317594F' d='M42 34a5 5 0 0 1 2.8 9.1L46.6 51h-9.2l1.8-7.9A5 5 0 0 1 42 34z'/%3E%3Ccircle cx='42' cy='14.3' r='3.2' fill='%23A97C24'/%3E%3Ccircle cx='66' cy='28.2' r='3.2' fill='%23A97C24'/%3E%3Ccircle cx='66' cy='55.8' r='3.2' fill='%23A97C24'/%3E%3Ccircle cx='42' cy='69.7' r='3.2' fill='%23A97C24'/%3E%3Ccircle cx='18' cy='55.8' r='3.2' fill='%23A97C24'/%3E%3Ccircle cx='18' cy='28.2' r='3.2' fill='%23A97C24'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 84 84'%3E%3Crect x='3' y='3' width='78' height='78' rx='18' fill='%23FFFFFF' stroke='%23DCE1DC'/%3E%3Ccircle cx='42' cy='42' r='16.5' fill='none' stroke='%230E1116' stroke-width='4'/%3E%3Cpath fill='%230E1116' d='M42 34a5 5 0 0 1 2.8 9.1L46.6 51h-9.2l1.8-7.9A5 5 0 0 1 42 34z'/%3E%3Ccircle cx='42' cy='14.3' r='3.2' fill='%23C8F374'/%3E%3Ccircle cx='66' cy='28.2' r='3.2' fill='%23C8F374'/%3E%3Ccircle cx='66' cy='55.8' r='3.2' fill='%23C8F374'/%3E%3Ccircle cx='42' cy='69.7' r='3.2' fill='%23C8F374'/%3E%3Ccircle cx='18' cy='55.8' r='3.2' fill='%23C8F374'/%3E%3Ccircle cx='18' cy='28.2' r='3.2' fill='%23C8F374'/%3E%3C/svg%3E">
 <style>
-:root{--paper:#F3F6F4;--panel:#FFFFFF;--ink:#0F1B22;--muted:#4C5963;--line:#DCE4E0;--guard:#17594F;--guard-ink:#FFFFFF;--brass:#B8862B;--ok:#2E7D4F;--bad:#B3412E;--soft:#E7EEEA;
+:root{--paper:#F5F5F1;--panel:#FFFFFF;--ink:#0E1116;--muted:#4A5058;--line:#DADAD2;--guard:#0E1116;--guard-ink:#FFFFFF;--brass:#5E8C12;--ok:#2E7D4F;--bad:#B3412E;--soft:#E7F6C8;
   --serif:"Inter NG Display","Inter NG","Segoe UI",system-ui,sans-serif;--sans:"Inter NG","Segoe UI",system-ui,-apple-system,Roboto,sans-serif;accent-color:var(--guard)}
-@media (prefers-color-scheme:dark){:root{--paper:#10151B;--panel:#171E26;--ink:#E4E9E6;--muted:#8E99A0;--line:#27313B;--guard:#5FA79E;--guard-ink:#0D1A18;--brass:#C99A3A;--ok:#5DBB83;--bad:#E07A66;--soft:#1C2A2A}}
+@media (prefers-color-scheme:dark){:root{--paper:#0E1116;--panel:#1D2029;--ink:#E4E9E6;--muted:#8E99A0;--line:#2A2E38;--guard:#C8F374;--guard-ink:#0E1116;--brass:#C8F374;--ok:#5DBB83;--bad:#E07A66;--soft:#26301A}}
 *{box-sizing:border-box}html,body{margin:0}body{background:var(--paper);color:var(--ink);font:15.5px/1.55 var(--sans);-webkit-font-smoothing:antialiased}
 main{max-width:680px;margin:0 auto;padding:28px 18px 48px}
 header{display:flex;align-items:center;gap:14px;margin-bottom:6px}
@@ -1074,7 +1074,7 @@ async function load() {
   $("#onlineBox").classList.toggle("hide", !OR || !OR.eligible);
   if (OR && OR.eligible) {
     const pctDone = Math.min(100, Math.round(OR.online_days * 100 / OR.need_days));
-    $("#onlineTitle").textContent = `Beta reward: ${money(OR.amount).replace(/\.00$/, "")} this month for staying online`;
+    $("#onlineTitle").textContent = `Founding node: ${money(OR.amount).replace(/\.00$/, "")} this month for staying online`;
     $("#onlineDays").textContent = `${Math.min(OR.online_days, OR.need_days)} of ${OR.need_days} days`;
     $("#onlineBar").style.width = pctDone + "%";
     $("#onlineText").textContent = !OR.big_enough ? `Share at least ${OR.min_gb} GB to qualify (in Settings below).` :
