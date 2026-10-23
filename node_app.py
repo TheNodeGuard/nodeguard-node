@@ -1233,7 +1233,7 @@ LOGIN = r"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta nam
 <div class="card"><form id="f">
  <div id="create"><h2>Choose a password</h2>
   <p class="muted small" style="margin:0">Anyone at home who opens this page needs it. Type the setup code shown when NodeGuard Node was installed
-   (on a Raspberry Pi or Linux computer, run <b>sudo nodeguard-node code</b> to see it again; with Docker, it's in the container's log).</p>
+   (on a Raspberry Pi or Linux computer, run <b>sudo nodeguard-node code</b> to see it again; on a NAS or home server such as CasaOS, Unraid, TrueNAS or Synology, open NodeGuard Node's <b>Logs</b> and look for <b>Setup code</b>).</p>
   <label class="f" for="code">Setup code</label><input type="text" id="code" inputmode="numeric" autocomplete="one-time-code" placeholder="1234-5678"></div>
  <div id="signin"><h2>Sign in</h2><p class="muted small" style="margin:0">Type this box's NodeGuard Node password.</p></div>
  <label class="f" for="pw">Password</label><input type="password" id="pw" autocomplete="current-password">

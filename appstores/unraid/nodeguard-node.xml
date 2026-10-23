@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>NodeGuard-Node</Name>
+  <Repository>ghcr.io/thenodeguard/nodeguard-node:latest</Repository>
+  <Registry>https://github.com/TheNodeGuard/nodeguard-node/pkgs/container/nodeguard-node</Registry>
+  <Network>bridge</Network>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/TheNodeGuard/nodeguard-node/issues</Support>
+  <Project>https://nodeguard.co.uk</Project>
+  <Overview>NodeGuard is cloud storage that runs on people's computers instead of giant data centres. Share spare space on your Unraid server and get 1 GB of NodeGuard storage for every 2 GB you share, or be paid monthly. Everything it holds is encrypted and split into pieces, so nobody can read it. You choose the space, the upload speed and the hours. Nothing on your home network is opened up.</Overview>
+  <Category>Backup: Cloud: Network:Other</Category>
+  <WebUI>http://[IP]:[PORT:9596]/</WebUI>
+  <Icon>https://raw.githubusercontent.com/TheNodeGuard/nodeguard-node/main/appstores/assets/nodeguard-node.png</Icon>
+  <Config Name="Web page" Target="9596" Default="9596" Mode="tcp" Description="NodeGuard Node's page" Type="Port" Display="always" Required="true" Mask="false">9596</Config>
+  <Config Name="Shared space" Target="/data" Default="/mnt/user/nodeguard/" Mode="rw" Description="The space shared with the network. Put it on your array or a big pool." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/nodeguard/</Config>
+  <Config Name="Settings" Target="/config" Default="/mnt/user/appdata/nodeguard-node/" Mode="rw" Description="Settings and keys" Type="Path" Display="advanced" Required="true" Mask="false">/mnt/user/appdata/nodeguard-node/</Config>
+  <Config Name="Page password" Target="NODEGUARD_NODE_PASSWORD" Default="" Mode="" Description="Choose a password for NodeGuard Node's page (8 characters or more). If you leave it empty, the page asks for a setup code: find it in the container's Logs." Type="Variable" Display="always" Required="true" Mask="true"></Config>
+  <Config Name="Machine name" Target="NODEGUARD_NODE_NAME" Default="unraid" Mode="" Description="A name for this machine on the network" Type="Variable" Display="always" Required="false" Mask="false">unraid</Config>
+</Container>

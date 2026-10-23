@@ -1,0 +1,15 @@
+# NodeGuard Node on TrueNAS SCALE (24.10 or newer): Apps > Discover Apps > Custom App > Install via YAML,
+# paste this, change the two folders under "volumes" to datasets on your pool, and choose a password.
+services:
+  nodeguard-node:
+    image: ghcr.io/thenodeguard/nodeguard-node:latest
+    container_name: nodeguard-node
+    restart: unless-stopped
+    ports:
+      - "9596:9596"
+    volumes:
+      - /mnt/tank/apps/nodeguard-node:/config
+      - /mnt/tank/nodeguard:/data
+    environment:
+      NODEGUARD_NODE_PASSWORD: ""
+      NODEGUARD_NODE_NAME: truenas
