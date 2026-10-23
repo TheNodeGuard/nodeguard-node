@@ -651,20 +651,29 @@ def status():
     return out
 
 
+def _with_font(page):
+    """The page with the Inter typeface built in (uifont.py), so text reads the same on every computer."""
+    try:
+        import uifont
+        return uifont.with_font(page)
+    except ImportError:
+        return page
+
+
 PAGE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <title>NodeGuard</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 84 84'%3E%3Crect x='3' y='3' width='78' height='78' rx='18' fill='%23F2F4F1' stroke='%23DCE1DC'/%3E%3Ccircle cx='42' cy='42' r='16.5' fill='none' stroke='%231E5A55' stroke-width='4'/%3E%3Cpath fill='%231E5A55' d='M42 34a5 5 0 0 1 2.8 9.1L46.6 51h-9.2l1.8-7.9A5 5 0 0 1 42 34z'/%3E%3Ccircle cx='42' cy='14.3' r='3.2' fill='%23A97C24'/%3E%3Ccircle cx='66' cy='28.2' r='3.2' fill='%23A97C24'/%3E%3Ccircle cx='66' cy='55.8' r='3.2' fill='%23A97C24'/%3E%3Ccircle cx='42' cy='69.7' r='3.2' fill='%23A97C24'/%3E%3Ccircle cx='18' cy='55.8' r='3.2' fill='%23A97C24'/%3E%3Ccircle cx='18' cy='28.2' r='3.2' fill='%23A97C24'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 84 84'%3E%3Crect x='3' y='3' width='78' height='78' rx='18' fill='%23FFFFFF' stroke='%23DCE1DC'/%3E%3Ccircle cx='42' cy='42' r='16.5' fill='none' stroke='%2317594F' stroke-width='4'/%3E%3Cpath fill='%2317594F' d='M42 34a5 5 0 0 1 2.8 9.1L46.6 51h-9.2l1.8-7.9A5 5 0 0 1 42 34z'/%3E%3Ccircle cx='42' cy='14.3' r='3.2' fill='%23A97C24'/%3E%3Ccircle cx='66' cy='28.2' r='3.2' fill='%23A97C24'/%3E%3Ccircle cx='66' cy='55.8' r='3.2' fill='%23A97C24'/%3E%3Ccircle cx='42' cy='69.7' r='3.2' fill='%23A97C24'/%3E%3Ccircle cx='18' cy='55.8' r='3.2' fill='%23A97C24'/%3E%3Ccircle cx='18' cy='28.2' r='3.2' fill='%23A97C24'/%3E%3C/svg%3E">
 <style>
-:root{--paper:#F2F4F1;--panel:#FFFFFF;--ink:#1A222C;--muted:#5C6870;--line:#DCE1DC;--guard:#1E5A55;--guard-ink:#FFFFFF;--brass:#A97C24;--ok:#2E7D4F;--bad:#B3412E;--soft:#E7EEEA;
-  --serif:"Iowan Old Style","Charter","Georgia",serif;--sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;accent-color:var(--guard)}
+:root{--paper:#F3F6F4;--panel:#FFFFFF;--ink:#0F1B22;--muted:#4C5963;--line:#DCE4E0;--guard:#17594F;--guard-ink:#FFFFFF;--brass:#B8862B;--ok:#2E7D4F;--bad:#B3412E;--soft:#E7EEEA;
+  --serif:"Inter NG Display","Inter NG","Segoe UI",system-ui,sans-serif;--sans:"Inter NG","Segoe UI",system-ui,-apple-system,Roboto,sans-serif;accent-color:var(--guard)}
 @media (prefers-color-scheme:dark){:root{--paper:#10151B;--panel:#171E26;--ink:#E4E9E6;--muted:#8E99A0;--line:#27313B;--guard:#5FA79E;--guard-ink:#0D1A18;--brass:#C99A3A;--ok:#5DBB83;--bad:#E07A66;--soft:#1C2A2A}}
-*{box-sizing:border-box}html,body{margin:0}body{background:var(--paper);color:var(--ink);font:15px/1.55 var(--sans);-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}html,body{margin:0}body{background:var(--paper);color:var(--ink);font:15.5px/1.55 var(--sans);-webkit-font-smoothing:antialiased}
 main{max-width:680px;margin:0 auto;padding:28px 18px 48px}
 header{display:flex;align-items:center;gap:14px;margin-bottom:6px}
 header svg{width:52px;height:52px;flex:none;color:var(--guard)}
-h1{font-family:var(--serif);font-weight:600;font-size:28px;margin:0;line-height:1.15}
-h2{font-family:var(--serif);font-weight:600;font-size:19px;margin:0 0 4px}
+h1{font-family:var(--serif);font-weight:700;letter-spacing:-.02em;font-size:28px;margin:0;line-height:1.15}
+h2{font-family:var(--serif);font-weight:700;letter-spacing:-.015em;font-size:19px;margin:0 0 4px}
 .lead{color:var(--muted);margin:6px 0 18px;max-width:58ch}.muted{color:var(--muted)}.small{font-size:13px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;margin:14px 0}
 .promise{display:grid;gap:8px;margin:12px 0 0;padding:0;list-style:none}.promise li{display:flex;gap:10px;align-items:flex-start;font-size:14px}
@@ -743,7 +752,7 @@ details.invite input{margin-top:8px}
  <symbol id="seal" viewBox="0 0 84 84"><circle cx="42" cy="42" r="17" fill="none" stroke="currentColor" stroke-width="4"/><path fill="currentColor" d="M42 34a5 5 0 0 1 2.8 9.1L46.6 51h-9.2l1.8-7.9A5 5 0 0 1 42 34z"/></symbol>
  <symbol id="tick" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
 </svg>
-<header><svg viewBox="0 0 84 84" aria-hidden="true"><use href="#seal"/></svg><div><h1>NodeGuard</h1><div class="muted small" id="netname"></div></div></header>
+<header><svg viewBox="0 0 84 84" aria-hidden="true"><use href="#seal"/><g fill="var(--brass)"><circle cx="42" cy="12" r="4"/><circle cx="68" cy="27" r="4"/><circle cx="68" cy="57" r="4"/><circle cx="42" cy="72" r="4"/><circle cx="16" cy="57" r="4"/><circle cx="16" cy="27" r="4"/></g></svg><div><h1>NodeGuard</h1><div class="muted small" id="netname"></div></div></header>
 
 <div id="upd" class="card upd hide"><div class="row"><div class="sp"><b id="updTitle"></b><div class="muted small" id="updText"></div></div><button class="primary" id="updBtn">Update now</button></div></div>
 <div id="setup" class="hide">
@@ -909,7 +918,7 @@ async function load() {
   const resp = await fetch("/api/status");
   if (resp.status === 401) return location.reload();
   S = await resp.json();
-  $("#netname").textContent = S.network_name + " network";
+  $("#netname").textContent = S.network_name && S.network_name !== "NodeGuard" ? `Sharing space on the ${S.network_name} network` : "Sharing this computer's spare space";
   if (S.headless) {          // a NAS or Raspberry Pi: always on, started by its service
     document.querySelectorAll("#auto, #auto2").forEach(x => x.closest("label").classList.add("hide"));
     $("#quit").classList.add("hide"); $("#signout").classList.remove("hide");
@@ -1262,7 +1271,7 @@ class H(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Content-Security-Policy", "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
-                         "img-src data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'")
+                         "img-src data:; font-src data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'")
         self.end_headers()
         self.wfile.write(body)
 
@@ -1288,10 +1297,10 @@ class H(BaseHTTPRequestHandler):
             return self._send(403, {"error": "This page only opens from your home network." if HEADLESS["on"] else "local use only"})
         if self.path in ("/", "/index.html"):
             if not self._signed_in():
-                page = (LOGIN.replace("__STYLE__", STYLE).replace("__MODE__", "signin" if GATE.has_password() else "create")
+                page = (LOGIN.replace("__STYLE__", _with_font(STYLE)).replace("__MODE__", "signin" if GATE.has_password() else "create")
                         .replace("__NAME__", machine_name().replace("&", "&amp;").replace("<", "&lt;")))
                 return self._send(200, page.encode(), "text/html; charset=utf-8")
-            return self._send(200, PAGE.replace("__TOKEN__", APP_TOKEN).encode(), "text/html; charset=utf-8")
+            return self._send(200, _with_font(PAGE).replace("__TOKEN__", APP_TOKEN).encode(), "text/html; charset=utf-8")
         if self.path == "/api/status" and not self._signed_in():
             return self._send(401, {"error": "sign in first"})
         if self.path == "/api/status":

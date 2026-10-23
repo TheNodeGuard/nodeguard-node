@@ -7,7 +7,7 @@ LABEL org.opencontainers.image.title="NodeGuard Node" \
       org.opencontainers.image.vendor="NodeGuard"
 ENV VAULT_NODE_HOME=/config NODEGUARD_DATA=/data NODEGUARD_NET=https://net.nodeguard.co.uk PYTHONUNBUFFERED=1
 RUN pip install --no-cache-dir "cryptography>=42" || echo "no ready-made cryptography for this machine: the built-in signature code is used"
-COPY node_app.py node.py tls.py proofs.py tickets.py httpsafe.py appwindow.py node_update.py /opt/nodeguard/
+COPY node_app.py node.py tls.py proofs.py tickets.py httpsafe.py appwindow.py node_update.py uifont.py /opt/nodeguard/
 COPY start-node.sh update-key.tx[t] /opt/nodeguard/
 COPY docker/start.sh /usr/local/bin/nodeguard-start
 RUN chmod 0755 /usr/local/bin/nodeguard-start
